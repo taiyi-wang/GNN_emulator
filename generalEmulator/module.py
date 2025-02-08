@@ -45,50 +45,9 @@ def global_mean_pool(x, batch, size=None):
 	size = batch.max().item() + 1 if size is None else size
 	return scatter(x, batch, dim=0, dim_size=size, reduce='mean')
 
-class BipartiteGraphOperator(MessagePassing):
-	def __init__(self, ndim_in, ndim_out, n_hidden = 15, ndim_edges = 3):
-		super(BipartiteGraphOperator, self).__init__('mean') # Use mean aggregation, not sum.
-		# include a single projection map
-		self.fc1 = nn.Linear(ndim_in + ndim_edges, n_hidden)
-		self.fc2 = nn.Linear(n_hidden, ndim_out) # added additional layer
+class SpatialAggregation(MessagePassing):
+	"""Basic Graph Convolution Module for Norm and Scale GNN"""
 
-		self.activate1 = nn.PReLU() # added activation.
-		self.activate2 = nn.PReLU() # added activation.
-
-	def forward(self, inpt, edges_grid_in_prod, edges_grid_in_prod_offsets, n_grid, n_mesh):
-
-		N = n_grid*n_mesh
-		M = n_grid
-
-		return self.activate2(self.fc2(self.propagate(edges_grid_in_prod, size = (N, M), x = inpt, edge_offsets = edges_grid_in_prod_offsets)))
-
-	def message(self, x_j, edge_offsets):
-
-		return self.activate1(self.fc1(torch.cat((x_j, edge_offsets), dim = 1)))
-
-class BipartiteGraphOperatorDirect(MessagePassing):
-	def __init__(self, ndim_in, ndim_out, n_hidden = 30, ndim_edges = 3):
-		super(BipartiteGraphOperatorDirect, self).__init__('mean') # Use mean aggregation, not sum.
-		# include a single projection map
-		self.fc1 = nn.Linear(ndim_in + ndim_edges, n_hidden)
-		self.fc2 = nn.Linear(n_hidden, ndim_out) # added additional layer
-
-		self.activate1 = nn.PReLU() # added activation.
-		self.activate2 = nn.PReLU() # added activation.
-
-	def forward(self, inpt, edges_grid_in_prod, edges_grid_in_prod_offsets, n_grid, n_mesh):
-
-		N = n_mesh
-		M = n_grid
-
-		return self.activate2(self.fc2(self.propagate(edges_grid_in_prod, size = (N, M), x = inpt, edge_offsets = edges_grid_in_prod_offsets)))
-
-	def message(self, x_j, edge_offsets):
-
-		return self.activate1(self.fc1(torch.cat((x_j, edge_offsets), dim = 1)))
-
-
-class SpatialAggregation(MessagePassing): # make equivelent version with sum operations. (no need for "complex" concatenation version). Assuming concat version is worse/better?
 	def __init__(self, in_channels, out_channels, scale_rel = 1.0, n_dim = 3, n_global = 3, n_hidden = 15, n_mask = 6):
 		super(SpatialAggregation, self).__init__('mean') # node dim
 		## Use two layers of SageConv. Explictly or implicitly?
@@ -104,8 +63,6 @@ class SpatialAggregation(MessagePassing): # make equivelent version with sum ope
 
 	def forward(self, x, mask, A_edges, pos, batch, n_nodes):
 
-		# Because inputs are batched, the "global pool" needs to be applied per disjoint graph
-		# Each nodes "global graph" index is assigned in the variable batch
 		global_pool = global_mean_pool(self.activate3(self.fglobal(x)), batch) # Could do max-pool
 		global_pool_repeat = global_pool.repeat_interleave(n_nodes, dim = 0)
 
@@ -115,7 +72,9 @@ class SpatialAggregation(MessagePassing): # make equivelent version with sum ope
 
 		return self.activate1(self.fc1(torch.cat((x_j, self.activate4(self.fedges(pos_i - pos_j))), dim = -1))) # instead of one global signal, map to several, based on a corsened neighborhood. This allows easier time to predict multiple sources simultaneously.
 
-class SpatialAggregationMesh(MessagePassing): # make equivelent version with sum operations. (no need for "complex" concatenation version). Assuming concat version is worse/better?
+class SpatialAggregationMesh(MessagePassing):
+	"""Basic Graph Convolution Module for Displacement GNN"""
+
 	def __init__(self, in_channels, out_channels, scale_rel = 1.0, n_dim = 3, n_dim_edges = 10, n_global = 3, n_hidden = 15, n_mask = 6):
 		super(SpatialAggregationMesh, self).__init__('mean') # node dim
 		## Use two layers of SageConv. Explictly or implicitly?
@@ -147,6 +106,8 @@ class SpatialAggregationMesh(MessagePassing): # make equivelent version with sum
 
 ## Note, adding one additional fcn, to the read-out layer
 class SpatialAttention(MessagePassing):
+	"""Spatial Attention Module used to predict displacement vectors at arbitrary query points"""
+
 	def __init__(self, inpt_dim, out_channels, n_dim = 3, n_latent = 20, scale_rel = 1.0, n_hidden = 30, n_heads = 5):
 		super(SpatialAttention, self).__init__(node_dim = 0, aggr = 'add') #  "Max" aggregation.
 		# notice node_dim = 0.
@@ -188,6 +149,8 @@ class SpatialAttention(MessagePassing):
 
 ## Note, adding one additional fcn, to the read-out layer
 class SpatialAttentionFine(MessagePassing):
+	"""Spatial Attention Module used to predict displacement vectors at arbitrary query points (with finer scale reference graph)"""
+
 	def __init__(self, inpt_dim, out_channels, n_dim = 3, n_latent = 20, scale_rel = 1.0, n_hidden = 30, n_heads = 5):
 		super(SpatialAttentionFine, self).__init__(node_dim = 0, aggr = 'add') #  "Max" aggregation.
 		# notice node_dim = 0.
@@ -229,6 +192,8 @@ class SpatialAttentionFine(MessagePassing):
 
 class GNN_Network_Mesh_Enhanced(nn.Module):
 
+	""" The Displacement GNN model """
+
 	def __init__(self, n_inpt = 6, n_inpt_edges = 1, n_hidden = 20, n_embed = 10, device = 'cpu'):
 		super(GNN_Network_Mesh_Enhanced, self).__init__()
 
@@ -266,9 +231,6 @@ class GNN_Network_Mesh_Enhanced(nn.Module):
 		self.n_dim_embed_mask = n_dim_embed_mask
 		self.n_dim_embed_edges = n_dim_embed_edges
 
-		# self.permute = permute
-
-		# self.fc1 = nn.Linear(15, 1)
 
 	def forward(self, x, mask, norm_val, x_query, A_edges, A_feature_edges, A_edges_c_1, merged_nodes, batch, batch_query, subset_indices, n_nodes, permute = False):
 
@@ -303,6 +265,8 @@ class GNN_Network_Mesh_Enhanced(nn.Module):
 		return pred
 
 class GNN_Network_Norm_Mesh_Enhanced(nn.Module):
+
+	""" The Norm GNN model """
 
 	def __init__(self, n_inpt = 3, n_hidden = 20, device = 'cuda'):
 		super(GNN_Network_Norm_Mesh_Enhanced, self).__init__()
@@ -359,6 +323,8 @@ class GNN_Network_Norm_Mesh_Enhanced(nn.Module):
 
 class GNN_Network_Lh_and_Lv_Mesh_Enhanced(nn.Module):
 
+	""" The Scale GNN model """
+
 	def __init__(self, n_inpt = 3, n_hidden = 20, device = 'cuda'):
 		super(GNN_Network_Lh_and_Lv_Mesh_Enhanced, self).__init__()
 
@@ -407,6 +373,8 @@ class GNN_Network_Lh_and_Lv_Mesh_Enhanced(nn.Module):
 		return pred
 
 class GNN_Merged_Mesh_Enhanced(nn.Module):
+
+	""" The model that merges the Displacement, Norm, and Scale GNNs """
 
 	def __init__(self, path_to_model, n_vers_load, n_steps_load, pos_grid_l, A_edges_c, A_edges_c_mesh, norm_vals, use_interquery = False, use_interquery_expanded = False, device = 'cpu'):
 		super(GNN_Merged_Mesh_Enhanced, self).__init__()
@@ -469,10 +437,6 @@ class GNN_Merged_Mesh_Enhanced(nn.Module):
 
 	def prediction(self, inpt, X_query, grid_ind, flipped_edges = 'both'): # True ## Files and grid indices as input
 
-		# st_files = [st[isample[j]] for j in range(n_batch)]
-
-		# batch_index = torch.hstack([torch.ones(self.n_nodes_grid)*j for j in range(n_batch)]).long().to(self.device)
-		# batch_index_query = torch.hstack([torch.ones(self.n_samples)*j for j in range(n_batch)]).long().to(self.device)
 
 		grid_ind = int(grid_ind)
 		batch_index = torch.zeros(len(self.pos_grid_l[grid_ind])).to(self.device).long()
@@ -488,12 +452,6 @@ class GNN_Merged_Mesh_Enhanced(nn.Module):
 		Fs_list = [inpt[1:-2]]
 		NormF_list = [inpt[-2]]
 		RMax_list = [inpt[-1]]
-		
-		## First apply Lh and Lv prediction model to get Lh and Lv (old version)
-		# pos_slice, signal_slice, query_slice, edges_slice, edges_c_slice, trgt_slice = assemble_batch_data_Lh_and_Lv(dz_list, Fs_list, NormF_list, RMax_list, X_query_list, grid_ind, self.pos_grid_l, self.A_edges_c, self.params)
-		# inpt_batch, mask_batch, pos_batch, query_batch, edges_batch, edges_batch_c, trgt_lh_and_lv_batch = batch_inputs(signal_slice, query_slice, edges_slice, edges_c_slice, pos_slice, trgt_slice, self.n_nodes_grid)
-		# pred_lh_and_lv = self.m_lh_and_lv(inpt_batch.contiguous(), mask_batch.contiguous(), query_batch, edges_batch, edges_batch_c, pos_batch, batch_index, batch_index_query, self.n_nodes_grid)	
-		# pred_lh_and_lv = pred_lh_and_lv.detach().cpu().numpy()
 
 		## First apply norm prediction model (note, both enhanced mesh Lh and Lv, and enhanced mesh norm model require same inputs)
 		pos_slice, signal_slice, edges_slice = assemble_batch_data_norm_mesh_enhanced(dz_list, Fs_list, NormF_list, RMax_list, self.shape_vals, self.params)
@@ -576,7 +534,6 @@ class GNN_Merged_Mesh_Enhanced(nn.Module):
 
 
 	def predict(self, fs, dx, dy, dz, Rmax, dp2mu, X, Y, Z, avgFlag):
-		# prediction function for user interface
 
 		# Compute normF-----------------------------------------------------------
 		tta = np.linspace(0, np.pi, 50)

@@ -37,7 +37,7 @@ def load_config(file_path: str) -> dict:
 		return yaml.safe_load(file)
 
 def make_cayleigh_graph(n):
-
+	""" Build a Cayley Graph for a certain value n """
 	generators = [np.array([1, 1, 0, 1]).reshape(2,2), np.array([1, 0, 1, 1]).reshape(2,2)]
 	nodes = np.vstack([generators[0].reshape(1,-1), generators[1].reshape(1,-1)])
 	edges = []
@@ -188,6 +188,8 @@ def global_min_pool(x, batch, size=None):
 
 def batch_inputs(signal_slice, query_slice, edges_slice, edges_c_slice, pos_slice, trgt_slice, node_ind_max):
 
+	""" Batch the input data and graphs into a concatenated representation """
+
 	inpt_batch = torch.vstack(signal_slice) # .to(device)
 	mask_batch = inpt_batch[:,3::] # Only select non-position points for mask
 	pos_batch = inpt_batch[:,0:3]
@@ -204,7 +206,7 @@ def batch_inputs(signal_slice, query_slice, edges_slice, edges_c_slice, pos_slic
 
 def batch_inputs_mesh(signal_slice, query_slice, edges_slice, edges_feature_slice, edges_c_slice, pos_slice, trgt_slice, node_ind_max, device = 'cpu'):
 
-	## Let mask be the same as
+	""" Batch the input data and graphs into a concatenated representation (for the alternative input version) """
 
 	inpt_batch = torch.vstack(signal_slice) # .to(device)
 	# mask_batch = inpt_batch[:,3::] # Only select non-position points for mask
@@ -223,6 +225,8 @@ def batch_inputs_mesh(signal_slice, query_slice, edges_slice, edges_feature_slic
 	return inpt_batch, inpt_batch, pos_batch, query_batch, edges_batch, edges_feature_batch, edges_batch_c, trgt_batch
 
 def kmeans_packing_logarithmic(scale_x, offset_x, ndim, n_clusters, n_batch = 3000, n_steps = 1000, n_sim = 1, lr = 0.01):
+
+	""" Run k-means packing with logarithmic sampling variant """
 
 	V_results = []
 	Losses = []
@@ -281,6 +285,8 @@ def kmeans_packing_logarithmic(scale_x, offset_x, ndim, n_clusters, n_batch = 30
 
 def kmeans_packing_focused(scale_x, offset_x, ndim, n_clusters, n_batch = 3000, n_steps = 1000, n_sim = 1, lr = 0.01):
 
+	""" Run k-means packing with focused `tiered' sampling variant """
+
 	V_results = []
 	Losses = []
 
@@ -305,8 +311,6 @@ def kmeans_packing_focused(scale_x, offset_x, ndim, n_clusters, n_batch = 3000, 
 
 			x_sample = np.vstack([np.random.rand(inc*n_batch, ndim)*x_factors[j]*scale_x + offset_x + ((1.0 - x_factors[j])/2.0)*scale_x for inc, j in enumerate(range(len(x_factors)))])
 
-			# x1 = np.random.rand(n_batch, ndim)*0.5*scale_x + offset_x + 0.25*scale_x
-			# x2 = np.random.rand(n_batch, ndim)*0.3*scale_x + offset_x + 0.35*scale_x
 
 			x = np.concatenate((x, x_sample), axis = 0)
 			x = x[np.random.choice(x.shape[0], size = n_batch, replace = False)]
@@ -339,6 +343,8 @@ def kmeans_packing_focused(scale_x, offset_x, ndim, n_clusters, n_batch = 3000, 
 	return V_results[ibest], V_results, Losses, losses, rz
 
 def kmeans_packing_logarithmic_focused(scale_x, offset_x, ndim, n_clusters, n_batch = 3000, n_steps = 1000, n_sim = 1, lr = 0.01):
+
+	""" Run k-means packing with alteernative logarithmic sampling variant """
 
 	V_results = []
 	Losses = []
@@ -401,6 +407,8 @@ def kmeans_packing_logarithmic_focused(scale_x, offset_x, ndim, n_clusters, n_ba
 	return V_results[ibest], V_results, Losses, losses, rz
 
 def kmeans_packing_logarithmic_parallel(num_cores, scale_x_list, offset_x_list, ndim, n_clusters, n_batch = 3000, n_steps = 1000, n_sim = 1, lr = 0.01):
+
+	""" Run k-means packing with alteernative logarithmic sampling variant (ver 2) """
 
 	def step_test(args):
 
@@ -470,6 +478,9 @@ def kmeans_packing_logarithmic_parallel(num_cores, scale_x_list, offset_x_list, 
 	return pos_grid_l
 
 def kmeans_packing_logarithmic_focused_parallel(num_cores, scale_x_list, offset_x_list, ndim, n_clusters, n_batch = 3000, n_steps = 1000, n_sim = 1, lr = 0.01):
+
+	""" Run k-means packing with alteernative logarithmic sampling variant (ver 3) """
+
 
 	def step_test(args):
 
@@ -545,20 +556,9 @@ def kmeans_packing_logarithmic_focused_parallel(num_cores, scale_x_list, offset_
 
 def make_spatial_graph_cKDTree(pos, k_pos = 15, device = 'cuda'):
 
-	## For every mesh node, link to k pos nodes
-	## Note: we could attach all spatial nodes to
-	## the nearest mesh nodes, though this seems
-	## less natural (as it would introduce
-	## very long range connections, linking to
-	## a small part of the mesh grid. It could
-	## potentially make learning the mapping
-	## easier).
-
-	## Can give absolute node locations as features
+	""" Make spatial graph with cKDTree """
 
 	n_pos = pos.shape[0]
-
-	# A_edges_mesh = knn(mesh, mesh, k = k + 1).flip(0).contiguous()[0].to(device)
 
 	tree = cKDTree(pos.cpu().detach().numpy())
 	edges = tree.query(pos.cpu().detach().numpy(), k = k_pos + 1)[1]
@@ -572,20 +572,9 @@ def make_spatial_graph_cKDTree(pos, k_pos = 15, device = 'cuda'):
 
 def make_spatial_graph(pos, k_pos = 15, device = 'cuda'):
 
-	## For every mesh node, link to k pos nodes
-	## Note: we could attach all spatial nodes to
-	## the nearest mesh nodes, though this seems
-	## less natural (as it would introduce
-	## very long range connections, linking to
-	## a small part of the mesh grid. It could
-	## potentially make learning the mapping
-	## easier).
-
-	## Can give absolute node locations as features
+	""" Make spatial graph with Pytorch Geometric """
 
 	n_pos = pos.shape[0]
-
-	# A_edges_mesh = knn(mesh, mesh, k = k + 1).flip(0).contiguous()[0].to(device)
 
 	## transfer
 	A_edges = remove_self_loops(knn(pos, pos, k = k_pos + 1).flip(0).contiguous())[0] # .to(device)
@@ -595,47 +584,18 @@ def make_spatial_graph(pos, k_pos = 15, device = 'cuda'):
 
 def make_bipartite_spatial_graph_cKDTree(pos_recieve, pos_send, k_pos = 15, device = 'cuda'):
 
-	## For every mesh node, link to k pos nodes
-	## Note: we could attach all spatial nodes to
-	## the nearest mesh nodes, though this seems
-	## less natural (as it would introduce
-	## very long range connections, linking to
-	## a small part of the mesh grid. It could
-	## potentially make learning the mapping
-	## easier).
-
-	## Can give absolute node locations as features
-
-	# n_pos = pos.shape[0]
-
-	# A_edges_mesh = knn(mesh, mesh, k = k + 1).flip(0).contiguous()[0].to(device)
+	""" Make biparitite spatial graph with cKDTree """
 
 	tree = cKDTree(pos_recieve.cpu().detach().numpy())
 	edges = tree.query(pos_send.cpu().detach().numpy(), k = k_pos)[1]
 	A_edges = torch.Tensor(np.hstack([np.concatenate((edges[i].reshape(1,-1), i*np.ones(k_pos).reshape(1,-1)), axis = 0) for i in range(len(pos_send))])).long().flip(0).contiguous().to(device)
 
-	## transfer
-	# A_edges = knn(pos_recieve, pos_send, k = k_pos) # .flip(0).contiguous()[0] # .to(device)
-	# edges_offset = pos[A_edges[1]] - pos[A_edges[0]]
 
 	return A_edges # , edges_offset
 
 def make_bipartite_spatial_graph(pos_recieve, pos_send, k_pos = 15, device = 'cuda'):
 
-	## For every mesh node, link to k pos nodes
-	## Note: we could attach all spatial nodes to
-	## the nearest mesh nodes, though this seems
-	## less natural (as it would introduce
-	## very long range connections, linking to
-	## a small part of the mesh grid. It could
-	## potentially make learning the mapping
-	## easier).
-
-	## Can give absolute node locations as features
-
-	# n_pos = pos.shape[0]
-
-	# A_edges_mesh = knn(mesh, mesh, k = k + 1).flip(0).contiguous()[0].to(device)
+	""" Make biparitite spatial graph with Pytorch Geometric """
 
 	## transfer ## Note: this outputs edges in the flipped "sorted" format
 	A_edges = knn(pos_recieve, pos_send, k = k_pos) # .flip(0).contiguous()[0] # .to(device)
@@ -644,6 +604,8 @@ def make_bipartite_spatial_graph(pos_recieve, pos_send, k_pos = 15, device = 'cu
 	return A_edges # , edges_offset
 
 def load_logarithmic_grids(ext_type, n_ver):
+
+	""" Load logarithmic spatial graphs """
 
 	if ext_type == 'local':
 		
@@ -664,6 +626,8 @@ def load_logarithmic_grids(ext_type, n_ver):
 
 
 def load_batch_data_norm_mesh_enhanced(st_files, shape_vals, params, use_shape_feature = True, use_extra_features = False):
+
+	""" Load batched input data for the norm model """
 
 	assert(use_shape_feature == True)
 
@@ -717,6 +681,8 @@ def load_batch_data_norm_mesh_enhanced(st_files, shape_vals, params, use_shape_f
 
 
 def load_batch_data_displacement_mesh_enhanced(st_files, grid_ind, Lh_and_Lv_vals, pos_grid_l, A_edges_c, A_edges_c_mesh, shape_vals, params, use_shape_feature = True):
+
+	""" Load batched input data for the displacement model """
 
 	## Must be true for this function, so that the mesh is concatenated into the spatial graph
 	assert(use_shape_feature == True)
@@ -799,8 +765,6 @@ def load_batch_data_displacement_mesh_enhanced(st_files, grid_ind, Lh_and_Lv_val
 		## Append concatenation of spatial graph and mesh
 		pos_slice.append(torch.cat((pos, x), dim = 0))
 
-		## Note: removing absolute position from input feature
-
 		## Maybe should remove absolute position from input feature
 		signal_slice.append(torch.cat(( torch.cat((pos, x), dim = 0), torch.cat((inpt_extend, inpt_extend_mesh), dim = 0), signal_feature ), dim = 1).to(device))
 		# signal_slice.append(torch.cat(( torch.cat((inpt_extend, inpt_extend_mesh), dim = 0), signal_feature ), dim = 1).to(device))
@@ -829,6 +793,8 @@ def load_batch_data_displacement_mesh_enhanced(st_files, grid_ind, Lh_and_Lv_val
 
 
 def load_batch_data_displacement_mesh_enhanced_both_edges(st_files, grid_ind, Lh_and_Lv_vals, pos_grid_l, A_edges_c, A_edges_c_mesh, shape_vals, params, use_shape_feature = True):
+
+	""" Load batched input data for the mesh based displacement model """
 
 	## Must be true for this function, so that the mesh is concatenated into the spatial graph
 	assert(use_shape_feature == True)
@@ -949,6 +915,8 @@ def load_batch_data_displacement_mesh_enhanced_both_edges(st_files, grid_ind, Lh
 
 def load_batch_data_Lh_and_Lv_mesh_enhanced(st_files, shape_vals, params, use_shape_feature = True, use_extra_features = False):
 
+	""" Load batched input data for the mesh based Lh and Lv model """
+
 	assert(use_shape_feature == True)
 
 	scale_val, n_nodes_grid, n_features, n_samples, min_val, max_val, k_spc_edges, norm_version, norm_vals, device = params
@@ -998,6 +966,8 @@ def load_batch_data_Lh_and_Lv_mesh_enhanced(st_files, shape_vals, params, use_sh
 
 def assemble_batch_data_norm_mesh_enhanced(dz_list, Fs_list, NormF_list, RMax_list, shape_vals, params, use_extra_features = False):
 
+	""" Merge batched input data for the mesh based norm model """
+
 	scale_val, n_nodes_grid, n_features, n_samples, min_val, max_val, k_spc_edges, norm_version, norm_vals, device = params
 
 	pos_slice = []
@@ -1026,6 +996,8 @@ def assemble_batch_data_norm_mesh_enhanced(dz_list, Fs_list, NormF_list, RMax_li
 	return pos_slice, signal_slice, edges_slice # , edges_c_slice, trgt_slice
 
 def assemble_batch_data_displacement_mesh_enhanced(dz_list, Fs_list, NormF_list, RMax_list, X_query_list, grid_ind, Lh_and_Lv_vals, pos_grid_l, A_edges_c, A_edges_c_mesh, shape_vals, params, use_shape_feature = True):
+
+	""" Merge batched input data for the mesh based displacement model """
 
 	if isinstance(grid_ind, int):
 		grid_ind = (grid_ind*np.ones(len(dz_list))).astype('int')
@@ -1103,6 +1075,8 @@ def assemble_batch_data_displacement_mesh_enhanced(dz_list, Fs_list, NormF_list,
 	return pos_slice, signal_slice, query_slice, edges_slice, edges_feature_slice, edges_c_slice # , trgt_slice
 
 def assemble_batch_data_displacement_mesh_enhanced_both_edges(dz_list, Fs_list, NormF_list, RMax_list, X_query_list, grid_ind, Lh_and_Lv_vals, pos_grid_l, A_edges_c, A_edges_c_mesh, shape_vals, params, use_shape_feature = True):
+
+	""" Merge batched input data for the mesh based displacement model with both edge types """
 
 	if isinstance(grid_ind, int):
 		grid_ind = (grid_ind*np.ones(len(dz_list))).astype('int')
@@ -1188,6 +1162,8 @@ def assemble_batch_data_displacement_mesh_enhanced_both_edges(dz_list, Fs_list, 
 
 def assemble_batch_data_Lh_and_Lv_mesh_enhanced(dz_list, Fs_list, NormF_list, RMax_list, X_query_list, params):
 
+	""" Merge batched input data for the mesh based Lh and Lv model """
+
 	assert(use_shape_feature == True)
 
 	scale_val, n_nodes_grid, n_features, n_samples, min_val, max_val, k_spc_edges, norm_version, norm_vals, device = params
@@ -1226,6 +1202,8 @@ def assemble_batch_data_Lh_and_Lv_mesh_enhanced(dz_list, Fs_list, NormF_list, RM
 
 def apply_shape_function(s, shape_vals):
 
+	""" Apply shape function to sample the mesh shapes along the surface with uniform angular sampling """
+
 	ls, ms, TTA, PHI = shape_vals
 
 	# For heterogeneous spherical harmonic shapes, model parameters are:
@@ -1256,6 +1234,8 @@ def apply_shape_function(s, shape_vals):
 
 def apply_shape_function_direct(dz, fs, normF, RMax, shape_vals):
 
+	""" Apply shape function to sample the mesh shapes along the surface with uniform angular sampling """
+
 	ls, ms, TTA, PHI = shape_vals
 
 	fs_plt = fs[0:np.size(ls)] + 1j*fs[np.size(ls):]# re-create complex fs vector for plotting
@@ -1268,12 +1248,16 @@ def apply_shape_function_direct(dz, fs, normF, RMax, shape_vals):
 
 def compute_shape_distance(pos, x, sig = 1.0):
 
+	""" Compute the Gaussian feature of the pairwise nearest neighbor distances """
+
 	tree = cKDTree(x)
 	dist = tree.query(pos)[0]
 
 	return np.exp(-0.5*(dist**2)/(sig**2)), dist
 
 def load_spherical_harmonic_parameters():
+
+	""" Load the angular parameters used for apply the shape function and sampling the spherical harmonic shapes """
 
 	lmax = 5 # maximum degree used to train emulator
 	ls, ms = generateDegreeOrder(lmax)
